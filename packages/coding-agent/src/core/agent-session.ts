@@ -207,6 +207,18 @@ export interface PromptOptions {
 	preflightResult?: (success: boolean) => void;
 }
 
+/** Options for setThinkingLevel() / cycleThinkingLevel() */
+export interface SetThinkingLevelOptions {
+	/**
+	 * When true, also update the global settings file
+	 * (`~/.pi/agent/settings.json` defaultThinkingLevel) so future sessions
+	 * inherit this thinking level. Defaults to false so in-session toggles
+	 * (Ctrl+T, extension RPC) stay ephemeral and only affect the current
+	 * session.
+	 */
+	persist?: boolean;
+}
+
 /** Result from cycleModel() */
 export interface ModelCycleResult {
 	model: Model<any>;
@@ -1527,13 +1539,18 @@ export class AgentSession {
 	/**
 	 * Set thinking level.
 	 * Clamps to model capabilities based on available thinking levels.
-	 * Saves to session and settings only if the level actually changes.
+	 * Updates session state and appends a `thinking_level_change` entry to the
+	 * session transcript only if the effective level actually changes.
+	 *
+	 * By default the change is ephemeral: it does NOT touch the global settings
+	 * file. Pass `{ persist: true }` from `/settings` (or other surfaces the
+	 * user has explicitly opted into) to also update `defaultThinkingLevel` in
+	 * the global settings.
 	 */
-	setThinkingLevel(level: ThinkingLevel): void {
+	setThinkingLevel(level: ThinkingLevel, opts: SetThinkingLevelOptions = {}): void {
 		const availableLevels = this.getAvailableThinkingLevels();
 		const effectiveLevel = availableLevels.includes(level) ? level : this._clampThinkingLevel(level, availableLevels);
 
-		// Only persist if actually changing
 		const previousLevel = this.agent.state.thinkingLevel;
 		const isChanging = effectiveLevel !== previousLevel;
 
@@ -1541,7 +1558,7 @@ export class AgentSession {
 
 		if (isChanging) {
 			this.sessionManager.appendThinkingLevelChange(effectiveLevel);
-			if (this.supportsThinking() || effectiveLevel !== "off") {
+			if (opts.persist && (this.supportsThinking() || effectiveLevel !== "off")) {
 				this.settingsManager.setDefaultThinkingLevel(effectiveLevel);
 			}
 			this._emit({ type: "thinking_level_changed", level: effectiveLevel });
@@ -1555,9 +1572,10 @@ export class AgentSession {
 
 	/**
 	 * Cycle to next thinking level.
+	 * Ephemeral by default — Ctrl+T cycling never touches the global settings.
 	 * @returns New level, or undefined if model doesn't support thinking
 	 */
-	cycleThinkingLevel(): ThinkingLevel | undefined {
+	cycleThinkingLevel(opts: SetThinkingLevelOptions = {}): ThinkingLevel | undefined {
 		if (!this.supportsThinking()) return undefined;
 
 		const levels = this.getAvailableThinkingLevels();
@@ -1565,7 +1583,7 @@ export class AgentSession {
 		const nextIndex = (currentIndex + 1) % levels.length;
 		const nextLevel = levels[nextIndex];
 
-		this.setThinkingLevel(nextLevel);
+		this.setThinkingLevel(nextLevel, opts);
 		return nextLevel;
 	}
 

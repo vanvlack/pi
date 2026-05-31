@@ -3904,7 +3904,7 @@ export class InteractiveMode {
 					followUpMode: this.session.followUpMode,
 					transport: this.settingsManager.getTransport(),
 					httpIdleTimeoutMs: this.settingsManager.getHttpIdleTimeoutMs(),
-					thinkingLevel: this.session.thinkingLevel,
+					thinkingLevel: this.settingsManager.getDefaultThinkingLevel() ?? this.session.thinkingLevel,
 					availableThinkingLevels: this.session.getAvailableThinkingLevels(),
 					currentTheme: this.settingsManager.getTheme() || "dark",
 					availableThemes: getAvailableThemes(),
@@ -3968,7 +3968,10 @@ export class InteractiveMode {
 						this.showStatus(`HTTP idle timeout: ${formatHttpIdleTimeoutMs(timeoutMs)}`);
 					},
 					onThinkingLevelChange: (level) => {
-						this.session.setThinkingLevel(level);
+						// `/settings` is the canonical surface for changing the
+						// persisted default thinking level. All other surfaces
+						// (Ctrl+T cycling, /model, extension RPC) stay ephemeral.
+						this.session.setThinkingLevel(level, { persist: true });
 						this.footer.invalidate();
 						this.updateEditorBorderColor();
 					},
